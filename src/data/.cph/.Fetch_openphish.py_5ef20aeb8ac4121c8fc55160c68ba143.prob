@@ -1,0 +1,1 @@
+{"name":"Local: Fetch_openphish","url":"/Users/henzlo/Documents/githuub/email-phishing-detector/src/data/Fetch_openphish.py","tests":[{"id":1777592094568,"input":"","output":""}],"interactive":false,"memoryLimit":1024,"timeLimit":3000,"srcPath":"/Users/henzlo/Documents/githuub/email-phishing-detector/src/data/Fetch_openphish.py","group":"local","local":true}
