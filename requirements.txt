@@ -10,3 +10,6 @@ numpy
 joblib
 transformers
 torch
+plotly
+streamlit-option-menu
+fpdf

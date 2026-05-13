@@ -2,7 +2,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import joblib
 
-from models.umang_model import build_model
+import os
+from .core_ml import build_model
 
 def load_data(path):
     df = pd.read_csv(path, engine='python', on_bad_lines='skip')
@@ -17,7 +18,9 @@ def load_data(path):
     return df
 
 def train():
-    df = load_data("../data/Phishing_Email.csv")
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    data_path = os.path.join(base_dir, 'data', 'external', 'Phishing_Email.csv')
+    df = load_data(data_path)
 
     X_train, X_test, y_train, y_test = train_test_split(
         df["Email Text"],
@@ -30,7 +33,8 @@ def train():
     model = build_model()
     model.fit(X_train, y_train)
 
-    joblib.dump(model, "../models/phishing_model.pkl")
+    model_path = os.path.join(base_dir, 'models', 'phishing_model.pkl')
+    joblib.dump(model, model_path)
 
     print("✅ Model trained and saved")
 

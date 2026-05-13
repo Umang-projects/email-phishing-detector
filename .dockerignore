@@ -1,0 +1,30 @@
+# Virtual environment
+venv/
+env/
+.env
+
+# Git
+.git/
+.gitignore
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+
+# Pytest
+.pytest_cache/
+
+# Project specific
+notebooks/
+reports/
+docs/
+tests/
+logs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
