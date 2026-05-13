@@ -1,166 +1,275 @@
-# Model Development Planning - Phishing Email Classification
+# Member 3 — ML Model Development
 
-## 1. Objective
-
-The goal of this module is to design, implement, and evaluate machine learning models for detecting phishing emails.
-
-This is formulated as a binary classification problem:
-- 0 → Safe Email
-- 1 → Phishing Email
-
-The primary focus is to maximize detection of phishing emails while minimizing false negatives.
+> **Module:** Phishing Email Classification with Scikit-Learn  
+> **Role:** Machine Learning Engineer  
+> **Approach:** Classical ML (TF-IDF + Linear Models)  
+> **Models Compared:** 4  
+> **Best Model:** SVM (Linear) — Selected by Validation F1-Score
 
 ---
 
-## 2. Dataset Understanding
+## 1. Environment & Libraries
 
-The dataset consists of:
-- Email Text: Raw textual content of emails
-- Email Type: Label (Safe / Phishing)
+```python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+import warnings
+warnings.filterwarnings('ignore')
 
-### Key Challenges:
-- Noisy and unstructured text data
-- Potential class imbalance
-- High dimensional sparse feature space after vectorization
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import (
+    classification_report, accuracy_score, precision_score,
+    recall_score, f1_score, confusion_matrix
+)
 
----
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import LinearSVC
+```
 
-## 3. Data Preprocessing Strategy
-
-The preprocessing pipeline will include:
-
-### 3.1 Data Cleaning
-- Remove null or missing email entries
-- Validate label consistency
-
-### 3.2 Label Encoding
-- Convert labels into binary format:
-  - Safe Email → 0
-  - Phishing Email → 1
-
-### 3.3 Text Processing
-- Convert text to lowercase
-- Remove English stopwords
-- Tokenization handled implicitly by TF-IDF
-
-### 3.4 Feature Extraction
-- Use TF-IDF Vectorization
-- Limit vocabulary size (e.g., 5000–10000 features) to control dimensionality and improve performance
+| Library | Purpose |
+|---------|---------|
+| `pandas` / `numpy` | Dataset loading & manipulation |
+| `scikit-learn` | Pipelines, models, metrics, splitting |
+| `joblib` | Model serialization (`.pkl`) |
+| `matplotlib` / `seaborn` | Confusion matrix & visualizations |
 
 ---
 
-## 4. Dataset Splitting Strategy
+## 2. Data Setup & Preprocessing
 
-The dataset will be divided into three subsets:
+### 2.1 Load & Clean
+```python
+CSV_PATH = "/content/Phishing_Email.csv"
+df = pd.read_csv(CSV_PATH, engine='python', on_bad_lines='skip')
 
-- Training Set → 70%
-- Validation Set → 15%
-- Test Set → 15%
+# Drop rows with missing Email Text or Email Type
+df = df.dropna(subset=["Email Text", "Email Type"])
 
-### Purpose:
-- Training Set: Used to train the models
-- Validation Set: Used for hyperparameter tuning and model selection
-- Test Set: Used only for final evaluation to ensure unbiased performance estimation
+# Encode labels: Safe Email → 0 | Phishing Email → 1
+df["label"] = df["Email Type"].map({"Safe Email": 0, "Phishing Email": 1})
+df = df.dropna(subset=["label"]).astype(int)
+```
 
-### Important:
-Stratified sampling will be used to maintain class distribution across all splits.
-
----
-
-## 5. Model Selection
-
-The following machine learning models will be implemented:
-
-### 5.1 Logistic Regression
-- Efficient and interpretable
-- Performs well on linearly separable sparse data
-
-### 5.2 Naive Bayes (Multinomial)
-- Strong baseline for text classification
-- Computationally efficient
-
-### 5.3 Support Vector Machine (LinearSVC)
-- Effective in high-dimensional spaces
-- Robust to overfitting in sparse feature settings
-- Expected to provide the best performance
+### 2.2 Class Distribution
+```
+Safe Email (0):    ~11,200  (~60.2%)
+Phishing (1):      ~7,400   (~39.8%)
+Total:             ~18,600  samples
+```
 
 ---
 
-## 6. Training Strategy
+## 3. Dataset Splitting Strategy
 
-- Use training set (70%) to fit models
-- Use validation set (15%) for hyperparameter tuning
-- Use scikit-learn pipelines to combine:
-  - TF-IDF Vectorizer
-  - Classification model
+**Stratified 60 / 20 / 20 Split** — maintains exact class proportions across all subsets.
 
-This ensures a clean and reproducible workflow.
+```python
+RANDOM_STATE = 42
 
----
+# Step 1: Separate Test set (20% of total)
+X_temp, X_test, y_temp, y_test = train_test_split(
+    X, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
+)
 
-## 7. Evaluation Metrics
+# Step 2: From remaining 80%, split Validation (25% of 80% = 20% of total)
+X_train, X_val, y_train, y_val = train_test_split(
+    X_temp, y_temp, test_size=0.25, random_state=RANDOM_STATE, stratify=y_temp
+)
+```
 
-The following metrics will be used:
+| Split | Percentage | Samples | Purpose |
+|-------|-----------|---------|---------|
+| **Training** | 60% | ~11,178 | Model fitting |
+| **Validation** | 20% | ~3,726 | Hyperparameter tuning & model selection |
+| **Test** | 20% | ~3,727 | **Final evaluation — touched ONCE only** |
 
-- Accuracy
-- Precision
-- Recall
-- F1-score
-
-### Key Focus:
-Recall is the most critical metric because failing to detect phishing emails (false negatives) poses a high risk.
-
-F1-score will be used as the primary metric for model comparison as it balances precision and recall.
-
----
-
-## 8. Hyperparameter Tuning Strategy
-
-Hyperparameter tuning will be performed using the validation set.
-
-### Logistic Regression:
-- Regularization parameter (C)
-
-### SVM (LinearSVC):
-- Regularization parameter (C)
-
-### TF-IDF:
-- Maximum number of features
-
-The best hyperparameters will be selected based on validation F1-score.
+> ⚠️ **Critical:** The Test set is strictly held out. It is used **only once** for final metrics after the best model is selected.
 
 ---
 
-## 9. Model Comparison Plan
+## 4. Pipeline Construction
 
-All models will be evaluated on the validation set using:
-- F1 Score (primary metric)
-- Recall (secondary priority)
-- Accuracy (supporting metric)
+### 4.1 TF-IDF Vectorizer Configuration
+```python
+TfidfVectorizer(
+    stop_words="english",      # Remove common words (the, and, is)
+    max_features=10000,         # Keep top 10,000 terms
+    ngram_range=(1, 2)          # Unigrams + Bigrams
+)
+```
 
-The best-performing model will then be evaluated on the test set for final reporting.
+### 4.2 Models Compared
+All 4 models use the **exact same TF-IDF pipeline** for fair comparison.
+
+| Model | Classifier | Key Properties |
+|-------|-----------|----------------|
+| **Logistic Regression** | `LogisticRegression(max_iter=1000, random_state=42)` | Binary classification, probability scores, `solver=lbfgs` |
+| **Naive Bayes** | `MultinomialNB()` | Fast probabilistic baseline, strong for sparse text |
+| **SVM (Linear)** | `LinearSVC(max_iter=2000)` | Best for sparse text, excellent generalization, **Best Model** |
+| **SVM (C=10)** | `LinearSVC(C=10, max_iter=2000)` | Higher regularization, near-identical to linear variant |
+
+### 4.3 Pipeline Architecture
+```python
+pipeline = Pipeline([
+    ("tfidf", TfidfVectorizer(
+        stop_words="english",
+        max_features=10000,
+        ngram_range=(1, 2)
+    )),
+    ("model", classifier)
+])
+```
 
 ---
 
-## 10. Final Evaluation Strategy
+## 5. Training & Selection Strategy
 
-- The selected model will be retrained (if required)
-- Final performance will be reported on the test set only
-- A detailed classification report will be generated
+### 5.1 Workflow
+1. **Train** all 4 models on the **Training set** (60%)
+2. **Evaluate** on the **Validation set** (20%) — compare Accuracy, Precision, Recall, F1
+3. **Select Best Model** by highest **Validation F1-Score**
+4. **Final Evaluation** on the **Test set** (20%) — touched only once
+
+### 5.2 Why F1-Score & Recall?
+
+| Metric | Formula | Why It Matters |
+|--------|---------|--------------|
+| **Recall** | TP / (TP + FN) | **Most critical** — a missed phishing email (False Negative) is the most dangerous outcome |
+| **Precision** | TP / (TP + FP) | Avoid false alarms — don't block legitimate emails |
+| **F1-Score** | 2 × (P × R) / (P + R) | **Primary selection metric** — harmonic mean balancing Precision & Recall |
+| **Accuracy** | (TP + TN) / Total | Overall correctness — supporting metric |
 
 ---
 
-## 11. Expected Outcome
+## 6. Validation Set Results
 
-- A robust phishing email detection system
-- Comparative analysis of multiple machine learning models
-- Identification of the most effective model for deployment
+**Validation Set:** Stratified 20% of ~18,600 samples (~3,726 emails)
+
+| Model | Accuracy | Precision | Recall | F1-Score | Status |
+|-------|----------|-----------|--------|----------|--------|
+| Logistic Regression | 97.21% | 0.9521 | 0.9781 | 0.9649 | — |
+| Naive Bayes | 95.68% | 0.9663 | 0.9220 | 0.9436 | Baseline |
+| **SVM (Linear)** 🏆 | **97.37%** | **0.9517** | **0.9829** | **0.9670** | **Best Model** |
+| SVM (C=10) | 97.34% | 0.9528 | 0.9808 | 0.9666 | Runner-up |
+
+> 🏆 **Best Model Selected:** `SVM (Linear)`  
+> - Highest Validation F1: **96.70%**  
+> - Highest Validation Recall: **98.29%** (fewest missed phishing emails)
 
 ---
 
-## 12. Future Improvements
+## 7. Final Test Set Evaluation
 
-- Implement deep learning models (Transformers)
-- Use pretrained embeddings instead of TF-IDF
-- Apply techniques to handle class imbalance (oversampling, SMOTE)
-- Deploy model as an API for real-world usage
+**Held-out Test Set:** 3,727 emails — evaluated **only once** using the selected best model.
+
+### 7.1 Overall Metrics
+
+| Metric | Score |
+|--------|-------|
+| **Accuracy** | **96.97%** |
+| **Precision** | **95.12%** |
+| **Recall** | **97.27%** |
+| **F1-Score** | **96.18%** |
+
+### 7.2 Detailed Classification Report
+
+| Class | Precision | Recall | F1-Score | Support |
+|-------|-----------|--------|----------|---------|
+| Safe Email | 0.98 | 0.97 | 0.97 | 2,264 |
+| Phishing Email | 0.95 | 0.97 | 0.96 | 1,463 |
+| **Overall** | **0.97** | **0.97** | **0.97** | **3,727** |
+
+### 7.3 Confusion Matrix
+
+| | Predicted Safe | Predicted Phishing |
+|---|---|---|
+| **Actual Safe** | 2,191 (TN) | 73 (FP) |
+| **Actual Phishing** | 40 (FN) | 1,423 (TP) |
+
+- **96.8%** of Safe emails correctly identified
+- **97.3%** of Phishing emails correctly caught
+- Only **40 phishing emails missed** out of 1,463
+
+---
+
+## 8. Visualizations
+
+A **4-panel dashboard** is generated and saved as `phishing_detection_results.png`:
+
+| Panel | Chart Type | Content |
+|-------|-----------|---------|
+| **1. Data Split** | Pie Chart | Training / Validation / Test proportions with sample counts |
+| **2. Model Comparison** | Horizontal Bar Chart | Validation F1-Score for all 4 models — Best model highlighted |
+| **3. Confusion Matrix** | Seaborn Heatmap | Test set predictions with TN, FP, FN, TP counts |
+| **4. Final Test Metrics** | Vertical Bar Chart | Accuracy, Precision, Recall, F1-Score with score labels |
+
+```python
+fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+fig.suptitle('Phishing Email Detection - Complete Results', fontsize=16, fontweight='bold')
+# ... (4 subplots as described above)
+plt.savefig('phishing_detection_results.png', dpi=150, bbox_inches='tight')
+```
+
+---
+
+## 9. Model Export & Inference
+
+### 9.1 Save Best Model
+```python
+MODEL_FILENAME = "phishing_model.pkl"
+joblib.dump(best_model, MODEL_FILENAME)
+```
+> Saved as a single `Pipeline` object containing both the TF-IDF vectorizer and the trained SVM classifier.
+
+### 9.2 Load & Predict (Inference)
+```python
+import joblib
+
+# Load model
+model = joblib.load("phishing_model.pkl")
+
+# Predict on new emails
+new_emails = ["Your email text here..."]
+predictions = model.predict(new_emails)
+# 0 = Safe Email | 1 = Phishing Email
+```
+
+### 9.3 Sample Predictions
+
+| Email | Prediction |
+|-------|-----------|
+| "Hello, please find the attached report for your review. Thanks, John" | ✅ Safe |
+| "URGENT: You won $1,000,000! Click here to claim your prize now!!!" | 🚨 Phishing |
+| "Meeting rescheduled to 3pm tomorrow. Let me know if that works." | ✅ Safe |
+| "CONGRATULATIONS! Your account has been selected for a special reward." | 🚨 Phishing |
+
+---
+
+## 10. Deliverables & Artifacts
+
+| Artifact | Description |
+|----------|-------------|
+| `phishing_model.pkl` | Serialized best model (TF-IDF + SVM pipeline) ready for deployment |
+| `phishing_detection_results.png` | 4-panel results dashboard |
+| Validation Results Table | Comparative metrics for all 4 models |
+| Test Classification Report | Final unbiased evaluation on held-out test set |
+
+---
+
+## 11. Key Takeaways
+
+1. **SVM (Linear) + TF-IDF** delivers **96.97% accuracy** and **97.27% recall** on unseen test data.
+2. **Stratified 60/20/20 split** ensures fair evaluation and prevents data leakage.
+3. **F1-Score** was the right choice for model selection — it balances catching phishing (Recall) with avoiding false alarms (Precision).
+4. The complete pipeline (vectorizer + classifier) is saved as a single object, making deployment and inference seamless.
+5. Classical ML with TF-IDF remains highly competitive for text classification and is **lightweight & interpretable** compared to deep learning alternatives.
+
+---
+
+> **End of Member 3 — ML Model Development Documentation**
